@@ -142,8 +142,10 @@ def train_model(train_loader, val_loader, n_train, n_val, n_channels, n_samples,
 
 def main():
     # Configuration
-    eeg_folder    = os.path.join("data", "enterface06_EMOBRAIN", "Data", "EEG")
-    label_file    = os.path.join("data", "enterface06_EMOBRAIN", "Data", "Common", "IAPS_Classes_EEG_FNIRS.txt")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    eeg_folder = os.path.join(base_dir, "data", "enterface06_EMOBRAIN", "Data", "EEG")
+    label_file = os.path.join(base_dir, "data", "enterface06_EMOBRAIN", "Data", "Common", "IAPS_Classes_EEG_fNIRS.txt")
+    
     trial_duration_s = 12.5
     batch_size    = 8
     num_epochs    = 10
@@ -162,7 +164,7 @@ def main():
     model = train_model(train_loader, val_loader, n_train, n_val, n_ch, n_samp, num_epochs, learning_rate)
 
     # 4. Save model weights into a dedicated folder with timestamp
-    output_dir = "checkpoints"
+    output_dir = os.path.join(base_dir, "checkpoints") 
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_filename = f"emotion_cnn_part1_ses1_{timestamp}.pth"
