@@ -10,6 +10,19 @@ def main():
 
     # load + print stats
     dataset = load_dataset(dataset_file)
+    from models.multimodal_model import MultiModalNet
+
+    # instantiate:
+    model = MultiModalNet(
+        n_channels=8,
+        n_samples=int(fs * duration),
+        n_bands=len(bands),
+        img_out_dim=64,
+        hidden_dim=64,
+        n_classes=5,      # e.g., Calm/Pos/Neg/Eye/Jaw
+        use_img=True      # or False to disable the image branch
+    )
 
 if __name__ == '__main__':
     main()
+    
