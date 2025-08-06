@@ -12,7 +12,12 @@ from utils.load_bdf import extract_trials_from_bdf
 from utils.load_labels import load_labels
 from utils.preprocess import preprocess_batch
 from models.cnn_model import EmotionCNN
-
+from utils.load_npz import load_dataset
+from utils.features import (
+    extract_time_domain,
+    extract_freq_domain,
+    extract_timefreq_images
+)
 
 def gather_all_data(eeg_folder, label_file, trial_duration_s):
     """
@@ -141,36 +146,31 @@ def train_model(train_loader, val_loader, n_train, n_val, n_channels, n_samples,
 
 
 def main():
-    # Configuration
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    eeg_folder = os.path.join(base_dir, "data", "enterface06_EMOBRAIN", "Data", "EEG")
-    label_file = os.path.join(base_dir, "data", "enterface06_EMOBRAIN", "Data", "Common", "IAPS_Classes_EEG_fNIRS.txt")
-    
-    trial_duration_s = 12.5
-    batch_size    = 8
-    num_epochs    = 10
-    learning_rate = 1e-3
+ # 1. Load raw NPZ
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    dataset_file = os.path.join(project_root, 'simulation', 'chewing_dataset.npz')
+    ds = load_dataset(dataset_file)
+    fs  = ds['sampling_rate']
+    dur = ds['trial_duration']
 
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Program started")
+    # 2. Time‐domain (filtered waveforms)
+    X_time_train = extract_time_domain(ds['X_train'], fs)
+    X_time_val   = extract_time_domain(ds['X_val'],   fs)
+    X_time_test  = extract_time_domain(ds['X_test'],  fs)
 
-    # 1. Gather only Part1_SES1 data
-    X_all, y_all = gather_all_data(eeg_folder, label_file, trial_duration_s=trial_duration_s)
+    # 3. Frequency‐domain (theta/alpha/beta band‐power)
+    bands = [(4,8), (8,13), (13,30)]
+    X_freq_train = extract_freq_domain(X_time_train, fs, bands)
+    X_freq_val   = extract_freq_domain(X_time_val,   fs, bands)
+    X_freq_test  = extract_freq_domain(X_time_test,  fs, bands)
 
-    # 2. Build DataLoaders for training/validation
-    train_loader, val_loader, n_train, n_val, n_ch, n_samp = build_dataset(X_all, y_all, batch_size=batch_size)
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Dataset split: {n_train} train, {n_val} val")
+    # 4. Time‐frequency images (spectrogram of channel 0)
+    X_img_train = extract_timefreq_images(X_time_train, fs)
+    X_img_val   = extract_timefreq_images(X_time_val,   fs)
+    X_img_test  = extract_timefreq_images(X_time_test,  fs)
 
-    # 3. Train the model
-    model = train_model(train_loader, val_loader, n_train, n_val, n_ch, n_samp, num_epochs, learning_rate)
-
-    # 4. Save model weights into a dedicated folder with timestamp
-    output_dir = os.path.join(base_dir, "checkpoints") 
-    os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_filename = f"emotion_cnn_part1_ses1_{timestamp}.pth"
-    save_path = os.path.join(output_dir, model_filename)
-    torch.save(model.state_dict(), save_path)
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Training completed. Model saved to {save_path}")
+    # 5. Now feed (X_time_*, X_freq_*, X_img_*) plus y_* into your Dataset / DataLoader
+    #    and then into your three‐branch CNN+LSTM / 1D‐CNN / 2D‐CNN model.
 
 
 if __name__ == "__main__":
