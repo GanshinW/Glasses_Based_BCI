@@ -1,1 +1,1 @@
-# emo_bci
+# Glasses_Based_BCI
