@@ -34,3 +34,8 @@ Classification Report:
 weighted avg     1.0000    1.0000    1.0000        45
 
 2025-08-06 21:54:46,466 - INFO - Training completed!
+2025-08-26 20:39:29,861 - INFO - Output directory: results_20250826_203929
+2025-08-26 20:39:30,027 - INFO - Found both intent and emotion datasets
+2025-08-26 20:39:30,132 - ERROR - Error training intent model: 'numpy.ndarray' object has no attribute 'replace'
+2025-08-26 20:39:30,198 - ERROR - Error training emotion model: 'numpy.ndarray' object has no attribute 'replace'
+2025-08-26 20:39:30,202 - INFO - Training pipeline completed successfully!
