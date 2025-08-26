@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 import glob
 
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
+
 def load_dataset(filename=None, task_type='auto'):
     """
     Load dataset from NPZ file - auto-detect generated datasets or specify filename
@@ -21,15 +23,12 @@ def load_dataset(filename=None, task_type='auto'):
     dataset : dict
         Complete dataset dictionary with all metadata
     """
+    data_dir = DATA_DIR
     
     if filename is None:
         # Auto-detect generated datasets
         if task_type == 'auto':
             # Look for both intent and emotion datasets and let user choose
-            data_dir = 'data'
-            if not os.path.exists(data_dir):
-                # Try simulation folder for backwards compatibility
-                data_dir = 'simulation'
             
             intent_files = glob.glob(os.path.join(data_dir, 'intent_dataset_*.npz'))
             emotion_files = glob.glob(os.path.join(data_dir, 'emotion_dataset_*.npz'))
@@ -57,14 +56,12 @@ def load_dataset(filename=None, task_type='auto'):
                 print(f"Using: {filename}")
         
         elif task_type == 'intent':
-            data_dir = 'data'
             intent_files = glob.glob(os.path.join(data_dir, 'intent_dataset_*.npz'))
             if not intent_files:
                 raise FileNotFoundError("No intent dataset found")
             filename = max(intent_files, key=os.path.getmtime)
             
         elif task_type == 'emotion':
-            data_dir = 'data' 
             emotion_files = glob.glob(os.path.join(data_dir, 'emotion_dataset_*.npz'))
             if not emotion_files:
                 raise FileNotFoundError("No emotion dataset found")

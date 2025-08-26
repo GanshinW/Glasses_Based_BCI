@@ -39,3 +39,8 @@ weighted avg     1.0000    1.0000    1.0000        45
 2025-08-26 20:39:30,132 - ERROR - Error training intent model: 'numpy.ndarray' object has no attribute 'replace'
 2025-08-26 20:39:30,198 - ERROR - Error training emotion model: 'numpy.ndarray' object has no attribute 'replace'
 2025-08-26 20:39:30,202 - INFO - Training pipeline completed successfully!
+2025-08-26 20:47:32,335 - INFO - Output directory: results_20250826_204732
+2025-08-26 20:47:32,498 - INFO - Found both intent and emotion datasets
+2025-08-26 20:47:32,605 - ERROR - Error training intent model: 'numpy.ndarray' object has no attribute 'replace'
+2025-08-26 20:47:32,680 - ERROR - Error training emotion model: 'numpy.ndarray' object has no attribute 'replace'
+2025-08-26 20:47:32,684 - INFO - Training pipeline completed successfully!
