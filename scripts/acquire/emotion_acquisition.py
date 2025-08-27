@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# acquire/emotion_acquisition.py
 """
 Emotion Acquisition (external audio): timer-only, record last 10s of 30s
 - No internal music playback

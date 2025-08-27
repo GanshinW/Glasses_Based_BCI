@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# acquire/intent_acquisition.py
 """
 Intent Detection Data Acquisition Script
 Manual control - each trial saved as individual CSV

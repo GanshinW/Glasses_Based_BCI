@@ -1,3 +1,4 @@
+# acquire/signal_acquisition.py
 import spidev
 import time
 import gpiod

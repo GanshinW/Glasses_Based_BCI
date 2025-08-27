@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+# acquire/dataset_builder.py
 """
 Dataset Builder for Intent and Emotion Recognition
 Converts raw acquisition data to training-ready datasets
-Applies unified preprocessing and creates NPZ format datasets
+Creates NPZ format datasets with RAW signals (no preprocessing)
 """
 
 import json
@@ -10,7 +10,6 @@ import csv
 import numpy as np
 import os
 from datetime import datetime
-from unified_preprocessor import UnifiedPreprocessor
 
 # Manual train_test_split to avoid sklearn dependency issues
 def manual_train_test_split(X, y, test_size=0.15, random_state=42):
@@ -60,7 +59,6 @@ def manual_train_test_split(X, y, test_size=0.15, random_state=42):
 class DatasetBuilder:
     def __init__(self, sampling_rate=250):
         self.sampling_rate = sampling_rate
-        self.preprocessor = UnifiedPreprocessor(sampling_rate)
         self.channel_names = ['F7', 'FT7', 'T7', 'F8', 'FT8', 'T8']
         
     def load_intent_data(self, data_dirs):
@@ -321,14 +319,7 @@ class DatasetBuilder:
             'window_length': window_length_sec,
             'task_type': 'intent_detection',
             'class_names': list(label_map.keys()),
-            'label_map': label_map,
-            'preprocessed': False,  # Mark as raw data
-            'preprocessing_params': {
-                'lowcut': 1.0,
-                'highcut': 40.0,
-                'notch_freq': 50.0,
-                'filter_order': 4
-            }
+            'label_map': label_map
         }
         
         return dataset
@@ -426,14 +417,7 @@ class DatasetBuilder:
             'window_length': window_length_sec,
             'task_type': 'emotion_recognition',
             'class_names': list(label_map.keys()),
-            'label_map': label_map,
-            'preprocessed': False,  # Mark as raw data
-            'preprocessing_params': {
-                'lowcut': 1.0,
-                'highcut': 40.0,
-                'notch_freq': 50.0,
-                'filter_order': 4
-            }
+            'label_map': label_map
         }
         
         return dataset
@@ -455,19 +439,11 @@ class DatasetBuilder:
         """Print dataset statistics"""
         print(f"\n=== Dataset Statistics ===")
         print(f"Task: {dataset['task_type']}")
-        print(f"Data type: {'RAW (unprocessed)' if not dataset['preprocessed'] else 'PREPROCESSED'}")
+        print(f"Data type: RAW (unprocessed)")
         print(f"Window length: {dataset['window_length']}s")
         print(f"Channels: {len(dataset['channel_names'])} {dataset['channel_names']}")
         print(f"Sampling rate: {dataset['sampling_rate']} Hz")
         print(f"Classes: {dataset['class_names']}")
-        
-        if not dataset['preprocessed']:
-            params = dataset['preprocessing_params']
-            print(f"\n=== Recommended Preprocessing ===")
-            print(f"Bandpass filter: {params['lowcut']}-{params['highcut']} Hz")
-            print(f"Notch filter: {params['notch_freq']} Hz")
-            print(f"Filter order: {params['filter_order']}")
-            print(f"Z-score normalization: per channel")
         
         print(f"\n=== Data Splits ===")
         print(f"Training: {len(dataset['X_train'])} samples")
@@ -490,9 +466,9 @@ class DatasetBuilder:
             print(f"Data range: [{dataset['X_train'].min():.2f}, {dataset['X_train'].max():.2f}] µV")
         
         print(f"\n=== Usage Instructions ===")
-        print("This dataset contains RAW signals. Apply preprocessing in your DL training:")
+        print("This dataset contains RAW signals. Apply preprocessing during training:")
         print("1. Load dataset: data = np.load('dataset.npz')")
-        print("2. Apply preprocessing: use unified_preprocessor.py")  
+        print("2. Apply preprocessing: use utils/preprocess.py functions")  
         print("3. Train model with preprocessed data")
         print("4. Use SAME preprocessing for real-time prediction")
 
