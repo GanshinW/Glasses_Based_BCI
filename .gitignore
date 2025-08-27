@@ -37,7 +37,7 @@ checkpoints/
 env/
 venv/
 
-# Data files (可选)
+# Data files
 *.bdf
 *.mrk
-data/
+*.npz
