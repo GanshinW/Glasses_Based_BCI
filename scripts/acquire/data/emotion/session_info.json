@@ -1,0 +1,20 @@
+{
+  "task_type": "emotion_recognition",
+  "participant_id": "P001",
+  "last_updated": "20250829_110440",
+  "sampling_rate": 250,
+  "electrode_positions": [
+    "F7",
+    "FT7",
+    "T7",
+    "F8",
+    "FT8",
+    "T8"
+  ],
+  "protocol": {
+    "total_duration": 30.0,
+    "recording_start": 20.0,
+    "recording_duration": 10.0
+  },
+  "total_trials": 51
+}

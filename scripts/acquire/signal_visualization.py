@@ -166,7 +166,7 @@ if __name__ == "__main__":
     visualizer = SignalVisualization()
     
     try:
-        data, timestamps = visualizer.load_data_from_csv("eeg_data_20250826_100616.csv")
+        data, timestamps = visualizer.load_data_from_csv("eeg_data_20250829_100618.csv")
         visualizer.visualize_data(data, timestamps, save_plots="eeg_analysis")
         
     except FileNotFoundError:
