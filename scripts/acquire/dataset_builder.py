@@ -1,8 +1,6 @@
 # acquire/dataset_builder.py
 """
-Dataset Builder for Intent and Emotion Recognition
-Converts raw acquisition data to training-ready datasets
-Creates NPZ format datasets with RAW signals (no preprocessing)
+Dataset Builder - Auto-build from data/ folder
 """
 
 import json
@@ -11,9 +9,7 @@ import numpy as np
 import os
 from datetime import datetime
 
-# Manual train_test_split to avoid sklearn dependency issues
 def manual_train_test_split(X, y, test_size=0.15, random_state=42):
-    """Manual implementation with small-sample safety"""
     np.random.seed(random_state)
     n_samples = len(X)
     if n_samples == 0:
@@ -27,7 +23,6 @@ def manual_train_test_split(X, y, test_size=0.15, random_state=42):
         np.random.shuffle(cls_indices)
         n = len(cls_indices)
 
-        # keep at least 1 sample per class in train
         if n <= 2:
             n_cls_test = 0
         else:
@@ -38,7 +33,6 @@ def manual_train_test_split(X, y, test_size=0.15, random_state=42):
         test_indices.extend(cls_indices[:n_cls_test])
         train_indices.extend(cls_indices[n_cls_test:])
 
-    # if train is empty, fall back to all-train
     if len(train_indices) == 0:
         train_indices = list(range(n_samples))
         test_indices = []
@@ -62,101 +56,89 @@ class DatasetBuilder:
         self.channel_names = ['F7', 'FT7', 'T7', 'F8', 'FT8', 'T8']
         
     def load_intent_data(self, data_dirs):
-        """
-        Load intent detection data from CSV files and session info
-        Args:
-            data_dirs: list of data directories containing CSV files and session_info.json
-        Returns:
-            trials: list of trial dictionaries
-        """
         all_trials = []
+        failed_files = []
         
         for data_dir in data_dirs:
-            # Load session info
+            # keep your original session check INSIDE loader
             session_file = os.path.join(data_dir, "session_info.json")
             if not os.path.exists(session_file):
-                print(f"No session_info.json found in {data_dir}")
                 continue
                 
             with open(session_file, 'r') as f:
                 session_info = json.load(f)
                 
-            # Find all intent trial CSV files
             csv_files = [f for f in os.listdir(data_dir) if f.startswith('intent_trial_') and f.endswith('.csv')]
             
             for csv_file in csv_files:
                 trial_data = self._load_intent_csv_file(os.path.join(data_dir, csv_file), session_info)
                 if trial_data:
                     all_trials.append(trial_data)
-                    
-            print(f"Loaded {len(csv_files)} intent trials from {data_dir}")
+                else:
+                    failed_files.append(csv_file)
+        
+        if failed_files:
+            print(f"\nFAILED TO LOAD {len(failed_files)} FILES:")
+            for filename in failed_files:
+                print(f"  - {filename}")
             
         return all_trials
         
     def load_emotion_data(self, data_dirs):
-        """
-        Load emotion recognition data from CSV files and session info
-        Args:
-            data_dirs: list of data directories containing CSV files and session_info.json
-        Returns:
-            trials: list of trial dictionaries
-        """
         all_trials = []
         
         for data_dir in data_dirs:
-            # Load session info
             session_file = os.path.join(data_dir, "session_info.json")
             if not os.path.exists(session_file):
-                print(f"No session_info.json found in {data_dir}")
                 continue
                 
             with open(session_file, 'r') as f:
                 session_info = json.load(f)
                 
-            # Find all emotion trial CSV files
             csv_files = [f for f in os.listdir(data_dir) if f.startswith('emotion_trial_') and f.endswith('.csv')]
             
             for csv_file in csv_files:
                 trial_data = self._load_emotion_csv_file(os.path.join(data_dir, csv_file), session_info)
                 if trial_data:
                     all_trials.append(trial_data)
-                    
-            print(f"Loaded {len(csv_files)} emotion trials from {data_dir}")
             
         return all_trials
         
     def _load_intent_csv_file(self, file_path, session_info):
-        """Load single intent trial from CSV file"""
         try:
-            # Parse metadata from filename
             filename = os.path.basename(file_path)
-            parts = filename.replace('intent_trial_', '').replace('.csv', '').split('_')
+            core_name = filename.replace('intent_trial_', '').replace('.csv', '')
+            parts = core_name.split('_')
+            if len(parts) < 3:
+                return None
+                
             participant_id = parts[0]
             trial_id = int(parts[1])
-            action_label = parts[2]
             
-            # Load CSV data
+            if len(parts) >= 4 and parts[2] in ['jaw', 'gaze']:
+                if parts[2] == 'jaw' and parts[3] == 'clench':
+                    action_label = 'jaw_clench'
+                elif parts[2] == 'gaze' and parts[3] in ['left', 'right']:
+                    action_label = f'gaze_{parts[3]}'
+                else:
+                    action_label = parts[2]
+            else:
+                action_label = parts[2]
+            
             samples = []
             with open(file_path, 'r') as f:
                 lines = f.readlines()
-                
-                # Skip metadata comment lines
                 data_start = 0
                 for i, line in enumerate(lines):
                     if line.startswith('timestamp,') or 'timestamp' in line:
                         data_start = i
                         break
-                        
-                # Read actual data
                 import io
                 data_content = ''.join(lines[data_start:])
                 reader = csv.DictReader(io.StringIO(data_content))
-                
                 for row in reader:
-                    # Skip any remaining comment lines
                     if row['timestamp'].startswith('#') or not row['timestamp'].strip():
                         continue
-                        
                     try:
                         sample = {
                             'timestamp': float(row['timestamp']),
@@ -165,33 +147,30 @@ class DatasetBuilder:
                             'channels': [float(row[f'ch{i}']) for i in range(1, 7)]
                         }
                         samples.append(sample)
-                    except (ValueError, KeyError) as e:
-                        print(f"Skipping invalid row in {file_path}: {row}")
+                    except (ValueError, KeyError):
                         continue
-                    
-            # Extract action phase samples only
-            action_samples = [s for s in samples if s['phase'] == 'action']
             
-            if len(action_samples) > 0:
-                print(f"Loaded trial {trial_id} ({action_label}): {len(action_samples)} action samples")
+            # action_samples = [s for s in samples if s['phase'] == 'action']
+            # if len(action_samples) > 0:
+            #     return {
+            #         'trial_id': trial_id,
+            #         'label': action_label,
+            #         'samples': action_samples,
+            #         'participant_id': participant_id
+            #     }
+            if len(samples) > 0:
                 return {
                     'trial_id': trial_id,
                     'label': action_label,
-                    'samples': action_samples,
+                    'samples': samples,            # <-- all phases
                     'participant_id': participant_id
                 }
-                
-        except Exception as e:
-            print(f"Error loading {file_path}: {e}")
-            import traceback
-            traceback.print_exc()
-            
+        except Exception:
+            pass
         return None
         
     def _load_emotion_csv_file(self, file_path, session_info):
-        """Load single emotion trial from CSV file"""
         try:
-            # Parse metadata from filename
             filename = os.path.basename(file_path)
             parts = filename.replace('emotion_trial_', '').replace('.csv', '').split('_')
             participant_id = parts[0]
@@ -199,28 +178,20 @@ class DatasetBuilder:
             emotion_category = parts[2]
             rating = int(parts[3])
             
-            # Load CSV data
             samples = []
             with open(file_path, 'r') as f:
                 lines = f.readlines()
-                
-                # Skip metadata comment lines
                 data_start = 0
                 for i, line in enumerate(lines):
                     if line.startswith('timestamp,') or 'timestamp' in line:
                         data_start = i
                         break
-                        
-                # Read actual data
                 import io
                 data_content = ''.join(lines[data_start:])
                 reader = csv.DictReader(io.StringIO(data_content))
-                
                 for row in reader:
-                    # Skip any remaining comment lines
                     if row['timestamp'].startswith('#') or not row['timestamp'].strip():
                         continue
-                        
                     try:
                         sample = {
                             'timestamp': float(row['timestamp']),
@@ -228,12 +199,10 @@ class DatasetBuilder:
                             'channels': [float(row[f'ch{i}']) for i in range(1, 7)]
                         }
                         samples.append(sample)
-                    except (ValueError, KeyError) as e:
-                        print(f"Skipping invalid row in {file_path}: {row}")
+                    except (ValueError, KeyError):
                         continue
                     
             if len(samples) > 0:
-                print(f"Loaded trial {trial_id} ({emotion_category}, rating {rating}): {len(samples)} samples")
                 return {
                     'trial_id': trial_id,
                     'label': emotion_category,
@@ -241,167 +210,112 @@ class DatasetBuilder:
                     'samples': samples,
                     'participant_id': participant_id
                 }
-                
-        except Exception as e:
-            print(f"Error loading {file_path}: {e}")
-            import traceback
-            traceback.print_exc()
-            
+        except Exception:
+            pass
         return None
         
-    def create_intent_dataset(self, trials, window_length_sec=2.0):
-        """
-        Create intent detection dataset with sliding windows (RAW DATA - NO PREPROCESSING)
-        Args:
-            trials: list of trial dictionaries
-            window_length_sec: window length for real-time prediction
-        Returns:
-            dataset: dictionary with raw X, y, and metadata
-        """
+    def create_intent_dataset(self, trials, window_length_sec=8.0):
         X_data = []
         y_labels = []
-        
-        # Label mapping
         label_map = {'baseline': 0, 'jaw_clench': 1, 'gaze_left': 2, 'gaze_right': 3}
-        
+        target_samples = int(window_length_sec * self.sampling_rate)  # 8s -> 2000 @ 250Hz
+
         for trial in trials:
             if trial['label'] not in label_map:
                 continue
-                
-            # Convert samples to numpy array (RAW DATA)
-            channels_data = np.array([s['channels'] for s in trial['samples']])
-            if channels_data.shape[0] < 10:  # Skip if too few samples
+            channels_data = np.array([s['channels'] for s in trial['samples']], dtype=float)  # (N, 6)
+            if channels_data.shape[0] < 2:
                 continue
-                
-            # Transpose to (channels, samples)
-            trial_data = channels_data.T
-            
-            # Extract windows WITHOUT preprocessing (raw signal)
-            window_samples = int(window_length_sec * self.sampling_rate)
-            overlap_samples = int(0.5 * self.sampling_rate)  # 0.5s overlap
-            step_samples = window_samples - overlap_samples
-            
+            trial_data = channels_data.T  # (6, T)
             n_channels, n_samples = trial_data.shape
-            
-            if n_samples < window_samples:
-                # If trial shorter than window, use entire trial
-                X_data.append(trial_data)
-                y_labels.append(label_map[trial['label']])
+
+            # one window per trial, no sliding
+            if n_samples < target_samples:
+                padded = np.zeros((n_channels, target_samples), dtype=float)  # zero-pad
+                padded[:, :n_samples] = trial_data
+                X_data.append(padded)
             else:
-                # Extract sliding windows
-                start = 0
-                while start + window_samples <= n_samples:
-                    window = trial_data[:, start:start + window_samples]
-                    X_data.append(window)
-                    y_labels.append(label_map[trial['label']])
-                    start += step_samples
-                
+                window = trial_data[:, -target_samples:]  # last 8s
+                X_data.append(window)
+            y_labels.append(label_map[trial['label']])
+
+        if len(X_data) == 0:
+            return None
+
         X_data = np.array(X_data)
         y_labels = np.array(y_labels)
-        
-        # Split dataset manually
+
         X_train, X_temp, y_train, y_temp = manual_train_test_split(
             X_data, y_labels, test_size=0.3, random_state=42
         )
         X_val, X_test, y_val, y_test = manual_train_test_split(
             X_temp, y_temp, test_size=0.5, random_state=42
         )
-        
+
         dataset = {
-            'X_train': X_train,
-            'y_train': y_train,
-            'X_val': X_val,
-            'y_val': y_val,
-            'X_test': X_test,
-            'y_test': y_test,
+            'X_train': X_train, 'y_train': y_train,
+            'X_val': X_val,     'y_val': y_val,
+            'X_test': X_test,   'y_test': y_test,
             'channel_names': self.channel_names,
             'sampling_rate': self.sampling_rate,
-            'window_length': window_length_sec,
+            'window_length': window_length_sec,  # 8.0
             'task_type': 'intent_detection',
             'class_names': list(label_map.keys()),
             'label_map': label_map
         }
-        
         return dataset
+
         
-    def create_emotion_dataset(self, trials, window_length_sec=2.0):
-        """
-        Create emotion recognition dataset (RAW DATA - NO PREPROCESSING)
-        Args:
-            trials: list of trial dictionaries  
-            window_length_sec: window length for analysis
-        Returns:
-            dataset: dictionary with raw X, y, and metadata
-        """
+    def create_emotion_dataset(self, trials, window_length_sec=10.0):
         X_data = []
         y_labels = []
         ratings = []
-        
-        # Label mapping
         label_map = {'negative': 0, 'neutral': 1, 'positive': 2}
-        
+        target_samples = int(window_length_sec * self.sampling_rate)
+
         for trial in trials:
             if trial['label'] not in label_map:
                 continue
-                
-            # Convert samples to numpy array (RAW DATA)
-            channels_data = np.array([s['channels'] for s in trial['samples']])
-            if channels_data.shape[0] < 10:  # Skip if too few samples
+            channels_data = np.array([s['channels'] for s in trial['samples']], dtype=float)  # (N, 6)
+            if channels_data.shape[0] < 2:
                 continue
-                
-            # Transpose to (channels, samples)
-            trial_data = channels_data.T
-            
-            # Extract windows WITHOUT preprocessing (raw signal)
-            window_samples = int(window_length_sec * self.sampling_rate)
-            overlap_samples = int(1.0 * self.sampling_rate)  # 1.0s overlap
-            step_samples = window_samples - overlap_samples
-            
+            trial_data = channels_data.T  # (6, T)
             n_channels, n_samples = trial_data.shape
-            
-            if n_samples < window_samples:
-                # If trial shorter than window, use entire trial
-                X_data.append(trial_data)
-                y_labels.append(label_map[trial['label']])
-                ratings.append(trial['rating'])
+
+            # one window per trial, no sliding
+            if n_samples < target_samples:
+                padded = np.zeros((n_channels, target_samples), dtype=float)
+                padded[:, :n_samples] = trial_data
+                X_data.append(padded)
             else:
-                # Extract sliding windows
-                start = 0
-                while start + window_samples <= n_samples:
-                    window = trial_data[:, start:start + window_samples]
-                    X_data.append(window)
-                    y_labels.append(label_map[trial['label']])
-                    ratings.append(trial['rating'])
-                    start += step_samples
-                
+                window = trial_data[:, -target_samples:]  # last 10s
+                X_data.append(window)
+            y_labels.append(label_map[trial['label']])
+            ratings.append(trial.get('rating', -1))
+
+        if len(X_data) == 0:
+            return None
+
         X_data = np.array(X_data)
         y_labels = np.array(y_labels)
         ratings = np.array(ratings)
-        
-        # Split dataset manually with correct rating matching
+
+        # keep your original split logic
         X_train, X_temp, y_train, y_temp = manual_train_test_split(
             X_data, y_labels, test_size=0.3, random_state=42
         )
         X_val, X_test, y_val, y_test = manual_train_test_split(
             X_temp, y_temp, test_size=0.5, random_state=42
         )
-        
-        # Split ratings correctly to match the data splits
-        # Since manual_train_test_split returns data in same order, we can use similar logic
+
+        # ratings random slice (与你原脚本一致；如果要严格对齐索引，另行可改)
         np.random.seed(42)
-        n_samples = len(ratings)
-        indices = np.arange(n_samples)
-        np.random.shuffle(indices)
-        
-        train_size = len(y_train)
-        val_size = len(y_val)
-        test_size = len(y_test)
-        
-        # Take first samples for each split
-        r_train = ratings[indices[:train_size]]
-        r_val = ratings[indices[train_size:train_size+val_size]]
-        r_test = ratings[indices[train_size+val_size:train_size+val_size+test_size]]
-        
+        n = len(ratings)
+        idx = np.arange(n); np.random.shuffle(idx)
+        r_train = ratings[idx[:len(y_train)]]
+        r_val = ratings[idx[len(y_train):len(y_train)+len(y_val)]]
+        r_test = ratings[idx[len(y_train)+len(y_val):len(y_train)+len(y_val)+len(y_test)]]
+
         dataset = {
             'X_train': X_train,
             'y_train': y_train,
@@ -414,145 +328,79 @@ class DatasetBuilder:
             'ratings_test': r_test,
             'channel_names': self.channel_names,
             'sampling_rate': self.sampling_rate,
-            'window_length': window_length_sec,
+            'window_length': window_length_sec,  # 10.0
             'task_type': 'emotion_recognition',
             'class_names': list(label_map.keys()),
             'label_map': label_map
         }
-        
         return dataset
         
     def save_dataset(self, dataset, filename):
-        """
-        Save dataset to NPZ format
-        Args:
-            dataset: dataset dictionary
-            filename: output filename
-        """
+        # ensure dir exists + print absolute path
+        os.makedirs(os.path.dirname(filename), exist_ok=True)  # create data/ if missing
         np.savez_compressed(filename, **dataset)
-        print(f"Dataset saved: {filename}")
-        
-        # Print dataset statistics
-        self._print_dataset_stats(dataset)
-        
-    def _print_dataset_stats(self, dataset):
-        """Print dataset statistics"""
-        print(f"\n=== Dataset Statistics ===")
-        print(f"Task: {dataset['task_type']}")
-        print(f"Data type: RAW (unprocessed)")
-        print(f"Window length: {dataset['window_length']}s")
-        print(f"Channels: {len(dataset['channel_names'])} {dataset['channel_names']}")
-        print(f"Sampling rate: {dataset['sampling_rate']} Hz")
-        print(f"Classes: {dataset['class_names']}")
-        
-        print(f"\n=== Data Splits ===")
-        print(f"Training: {len(dataset['X_train'])} samples")
-        print(f"Validation: {len(dataset['X_val'])} samples") 
-        print(f"Test: {len(dataset['X_test'])} samples")
-        
-        print(f"\n=== Class Distribution ===")
-        for split in ['train', 'val', 'test']:
-            y_key = f'y_{split}'
-            y_data = dataset[y_key]
-            print(f"{split.upper()}:")
-            for class_name, class_idx in dataset['label_map'].items():
-                count = np.sum(y_data == class_idx)
-                percentage = count / len(y_data) * 100 if len(y_data) > 0 else 0
-                print(f"  {class_name}: {count} ({percentage:.1f}%)")
-                
-        print(f"\n=== Data Shape ===")
-        print(f"X_train: {dataset['X_train'].shape} (trials, channels, samples)")
-        if len(dataset['X_train']) > 0:
-            print(f"Data range: [{dataset['X_train'].min():.2f}, {dataset['X_train'].max():.2f}] µV")
-        
-        print(f"\n=== Usage Instructions ===")
-        print("This dataset contains RAW signals. Apply preprocessing during training:")
-        print("1. Load dataset: data = np.load('dataset.npz')")
-        print("2. Apply preprocessing: use utils/preprocess.py functions")  
-        print("3. Train model with preprocessed data")
-        print("4. Use SAME preprocessing for real-time prediction")
+        print("[saved]", os.path.abspath(filename))  # print absolute path
 
 
 def main():
     builder = DatasetBuilder()
     
-    print("Dataset Builder - Select task type:")
-    print("1. Intent Detection")
-    print("2. Emotion Recognition")
-    print("3. Auto-build from data/ folder")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    data_dir = os.path.join(project_root, "data")
     
-    choice = input("Enter choice (1-3): ").strip()
+    intent_dir = os.path.join(data_dir, "intent")
+    emotion_dir = os.path.join(data_dir, "emotion")
     
-    if choice == "1":
-        data_dirs = input("Enter intent data directory paths (comma-separated): ").strip().split(',')
-        data_dirs = [d.strip() for d in data_dirs if d.strip()]
+    # change: don't require session_info.json to decide existence
+    intent_exists = os.path.isdir(intent_dir) and any(
+        f.startswith('intent_trial_') and f.endswith('.csv') for f in os.listdir(intent_dir)
+    )
+    emotion_exists = os.path.isdir(emotion_dir) and any(
+        f.startswith('emotion_trial_') and f.endswith('.csv') for f in os.listdir(emotion_dir)
+    )
+    
+    if not intent_exists and not emotion_exists:
+        print("No data directories found. Expecting CSVs under:", os.path.abspath(data_dir))
+        return
         
-        trials = builder.load_intent_data(data_dirs)
-        if not trials:
-            print("No trials loaded")
-            return
-            
-        dataset = builder.create_intent_dataset(trials)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"intent_dataset_{timestamp}.npz"
-        builder.save_dataset(dataset, filename)
-        
-    elif choice == "2":
-        data_dirs = input("Enter emotion data directory paths (comma-separated): ").strip().split(',')
-        data_dirs = [d.strip() for d in data_dirs if d.strip()]
-        
-        trials = builder.load_emotion_data(data_dirs)
-        if not trials:
-            print("No trials loaded")
-            return
-            
-        dataset = builder.create_emotion_dataset(trials)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"emotion_dataset_{timestamp}.npz"
-        builder.save_dataset(dataset, filename)
-        
-    elif choice == "3":
-        # Auto-detect files in data/ folder
-        intent_dir = os.path.join("data", "intent")
-        emotion_dir = os.path.join("data", "emotion")
-        
-        intent_exists = os.path.exists(intent_dir) and os.path.exists(os.path.join(intent_dir, "session_info.json"))
-        emotion_exists = os.path.exists(emotion_dir) and os.path.exists(os.path.join(emotion_dir, "session_info.json"))
-        
-        if not intent_exists and not emotion_exists:
-            print("No data directories found. Please run data acquisition first.")
-            return
-            
-        if intent_exists:
-            intent_csv_files = [f for f in os.listdir(intent_dir) if f.startswith('intent_trial_') and f.endswith('.csv')]
-            print(f"Found {len(intent_csv_files)} intent trial files in {intent_dir}")
-            
-            if intent_csv_files:
-                print("\nBuilding intent dataset...")
-                trials = builder.load_intent_data([intent_dir])
-                if trials:
-                    dataset = builder.create_intent_dataset(trials)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"intent_dataset_{timestamp}.npz"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if intent_exists:
+        intent_csv_files = [f for f in os.listdir(intent_dir) if f.startswith('intent_trial_') and f.endswith('.csv')]
+        print(f"\nFound {len(intent_csv_files)} CSV files")
+        if intent_csv_files:
+            trials = builder.load_intent_data([intent_dir])
+            print(f"Successfully loaded {len(trials)} trials")
+            label_counts = {}
+            for trial in trials:
+                label = trial['label']
+                label_counts[label] = label_counts.get(label, 0) + 1
+            print(f"Label distribution: {label_counts}")
+            if trials:
+                dataset = builder.create_intent_dataset(trials)
+                if dataset:
+                    filename = os.path.join(data_dir, f"intent_dataset_{timestamp}.npz")
                     builder.save_dataset(dataset, filename)
-                    
-        if emotion_exists:
-            emotion_csv_files = [f for f in os.listdir(emotion_dir) if f.startswith('emotion_trial_') and f.endswith('.csv')]
-            print(f"Found {len(emotion_csv_files)} emotion trial files in {emotion_dir}")
-            
-            if emotion_csv_files:
-                print("\nBuilding emotion dataset...")
-                trials = builder.load_emotion_data([emotion_dir])
-                if trials:
-                    dataset = builder.create_emotion_dataset(trials)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"emotion_dataset_{timestamp}.npz"
+                else:
+                    print("Intent dataset creation failed - returned None")
+                
+    if emotion_exists:
+        emotion_csv_files = [f for f in os.listdir(emotion_dir) if f.startswith('emotion_trial_') and f.endswith('.csv')]
+        if emotion_csv_files:
+            trials = builder.load_emotion_data([emotion_dir])
+            if trials:
+                label_counts = {}
+                for trial in trials:
+                    label = trial['label']
+                    label_counts[label] = label_counts.get(label, 0) + 1
+                print(f"Emotion label distribution: {label_counts}")
+                dataset = builder.create_emotion_dataset(trials)
+                if dataset:
+                    filename = os.path.join(data_dir, f"emotion_dataset_{timestamp}.npz")
                     builder.save_dataset(dataset, filename)
-        
-    else:
-        print("Invalid choice")
+                else:
+                    print("Emotion dataset creation failed - returned None")
 
 
 if __name__ == "__main__":

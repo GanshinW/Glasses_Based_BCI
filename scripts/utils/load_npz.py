@@ -31,10 +31,7 @@ def load_dataset(filename=None, task_type='auto'):
             # Look for both intent and emotion datasets and let user choose
             
             intent_files = glob.glob(os.path.join(data_dir, 'intent_dataset_*.npz'))
-            emotion_files = glob.glob(os.path.join(data_dir, 'emotion_dataset_*.npz'))
-            
-            if not intent_files and not emotion_files:
-                raise FileNotFoundError("No generated dataset files found. Please run generate_npz_files.py first")
+            emotion_files = glob.glob(os.path.join(data_dir, 'emotion_dataset_*.npz'))            
             
             print("Available datasets:")
             all_files = []
