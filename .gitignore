@@ -40,4 +40,3 @@ venv/
 # Data files
 *.bdf
 *.mrk
-*.npz
