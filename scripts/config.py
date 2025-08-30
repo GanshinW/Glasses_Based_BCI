@@ -13,7 +13,7 @@ class Config:
 
     # Training
     batch_size = 16
-    learning_rate = 1e-3
+    learning_rate = 0.01
     num_epochs = 50
     patience = 10
     num_workers = 0
