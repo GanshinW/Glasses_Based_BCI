@@ -45,7 +45,7 @@ class IntentAcquisitionGUI:
         # Trial timing (seconds)
         self.baseline_duration = 3
         self.action_duration = 3
-        self.recovery_duration = 2
+        self.recovery_duration = 4
         self.trial_duration = self.baseline_duration + self.action_duration + self.recovery_duration
         
         # Current trial state
@@ -142,6 +142,7 @@ class IntentAcquisitionGUI:
                 'total_duration': self.trial_duration
             },
             'total_trials': self.trial_count,
+            'window_length': 2.0,  # metadata for downstream 2 s sliding window
             'action_types': self.actions
         }
         

@@ -60,7 +60,6 @@ class DatasetBuilder:
         failed_files = []
         
         for data_dir in data_dirs:
-            # keep your original session check INSIDE loader
             session_file = os.path.join(data_dir, "session_info.json")
             if not os.path.exists(session_file):
                 continue
@@ -266,41 +265,46 @@ class DatasetBuilder:
         return dataset
 
         
-    def create_emotion_dataset(self, trials, window_length_sec=10.0):
-        X_data = []
-        y_labels = []
-        ratings = []
-        label_map = {'negative': 0, 'neutral': 1, 'positive': 2}
-        target_samples = int(window_length_sec * self.sampling_rate)
+    
+    def create_emotion_dataset(self, trials,
+                            trial_duration_sec=10.0,   # slice length for X_* (actual data length)
+                            window_meta_sec=2.0):      # metadata only, follow generate_npz_files.py
 
+        import numpy as np
+        from datetime import datetime
+
+        X_data, y_labels, ratings = [], [], []
+        label_map = {'negative': 0, 'neutral': 1, 'positive': 2}
+        target_samples = int(trial_duration_sec * self.sampling_rate)  # 10 s @ 250 Hz -> 2500
+
+        # Build (N, C, T) per trial; keep last 10 s; zero-pad if shorter
         for trial in trials:
             if trial['label'] not in label_map:
                 continue
-            channels_data = np.array([s['channels'] for s in trial['samples']], dtype=float)  # (N, 6)
-            if channels_data.shape[0] < 2:
+            ch_mat = np.array([s['channels'] for s in trial['samples']], dtype=float)  # (N, 6)
+            if ch_mat.shape[0] < 2:
                 continue
-            trial_data = channels_data.T  # (6, T)
+            trial_data = ch_mat.T  # (6, T)
             n_channels, n_samples = trial_data.shape
 
-            # one window per trial, no sliding
             if n_samples < target_samples:
                 padded = np.zeros((n_channels, target_samples), dtype=float)
                 padded[:, :n_samples] = trial_data
                 X_data.append(padded)
             else:
-                window = trial_data[:, -target_samples:]  # last 10s
-                X_data.append(window)
+                X_data.append(trial_data[:, -target_samples:])  # last 10 s
+
             y_labels.append(label_map[trial['label']])
             ratings.append(trial.get('rating', -1))
 
         if len(X_data) == 0:
             return None
 
-        X_data = np.array(X_data)
+        X_data   = np.array(X_data)
         y_labels = np.array(y_labels)
-        ratings = np.array(ratings)
+        ratings  = np.array(ratings)
 
-        # keep your original split logic
+        # Keep your manual per-class split
         X_train, X_temp, y_train, y_temp = manual_train_test_split(
             X_data, y_labels, test_size=0.3, random_state=42
         )
@@ -308,30 +312,42 @@ class DatasetBuilder:
             X_temp, y_temp, test_size=0.5, random_state=42
         )
 
-        # ratings random slice (与你原脚本一致；如果要严格对齐索引，另行可改)
-        np.random.seed(42)
-        n = len(ratings)
-        idx = np.arange(n); np.random.shuffle(idx)
-        r_train = ratings[idx[:len(y_train)]]
-        r_val = ratings[idx[len(y_train):len(y_train)+len(y_val)]]
-        r_test = ratings[idx[len(y_train)+len(y_val):len(y_train)+len(y_val)+len(y_test)]]
+        # Ratings slicing — exactly mirror generate_npz_files.py behavior
+        train_size = len(X_train)
+        val_size   = len(X_val)
+        r_train = ratings[:train_size]
+        r_val   = ratings[train_size:train_size + val_size]
+        r_test  = ratings[train_size + val_size:]
 
         dataset = {
-            'X_train': X_train,
-            'y_train': y_train,
-            'X_val': X_val,
-            'y_val': y_val,
-            'X_test': X_test,
-            'y_test': y_test,
+            # core arrays
+            'X_train': X_train, 'y_train': y_train,
+            'X_val':   X_val,   'y_val':   y_val,
+            'X_test':  X_test,  'y_test':  y_test,
+
+            # emotion-specific arrays
             'ratings_train': r_train,
-            'ratings_val': r_val,
-            'ratings_test': r_test,
-            'channel_names': self.channel_names,
+            'ratings_val':   r_val,
+            'ratings_test':  r_test,
+
+            # metadata (use np.array for *_names to support .tolist() downstream)
+            'channel_names': np.array(self.channel_names),
             'sampling_rate': self.sampling_rate,
-            'window_length': window_length_sec,  # 10.0
-            'task_type': 'emotion_recognition',
-            'class_names': list(label_map.keys()),
-            'label_map': label_map
+            'window_length': float(window_meta_sec),          # 2.0 (metadata)
+            'task_type':     'emotion_recognition',
+            'class_names':   np.array(list(label_map.keys())),
+            'label_map':     label_map,
+
+            # preprocessing info (record only)
+            'preprocessed': False,
+            'preprocessing_params': {
+                'lowcut': 1.0, 'highcut': 40.0, 'notch_freq': 50.0, 'filter_order': 4
+            },
+
+            # additional metadata
+            'trial_duration': float(trial_duration_sec),      # 10.0
+            'created_date': datetime.now().isoformat(),
+            'description':  'Emotion dataset built from CSV trials (glasses-based BCI)'
         }
         return dataset
         
@@ -352,7 +368,6 @@ def main():
     intent_dir = os.path.join(data_dir, "intent")
     emotion_dir = os.path.join(data_dir, "emotion")
     
-    # change: don't require session_info.json to decide existence
     intent_exists = os.path.isdir(intent_dir) and any(
         f.startswith('intent_trial_') and f.endswith('.csv') for f in os.listdir(intent_dir)
     )
