@@ -59,8 +59,8 @@ class RealTimeBCIPredictor:
         self.intent_model_path = intent_model_path
         
         # Class labels
-        self.emotion_classes = ['Calm', 'Positive', 'Negative']
-        self.intent_classes = ['Baseline', 'EyeMove', 'JawClench']
+        self.emotion_classes = ['neutral', 'Positive', 'Negative']
+        self.intent_classes = ['Baseline', 'GazeLeft', 'GazeRight','JawClench']
         
         # Prediction results
         self.current_emotion = "Unknown"
