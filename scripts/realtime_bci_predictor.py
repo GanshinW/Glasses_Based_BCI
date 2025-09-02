@@ -36,7 +36,7 @@ class RealTimeBCIPredictor:
         self.n_channels = 6
         self.window_length_sec = 2.0
         self.window_samples = int(self.window_length_sec * self.sampling_rate)
-        self.prediction_interval = 0.5
+        self.prediction_interval = 1
         
         # Signal buffers
         self.signal_buffer = deque(maxlen=self.window_samples)
